@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {imageBitmapToOffscreenCanvas} from '../../../utils';
 import {Rectangle, Vector, clamp} from '../../math';
 import {Canvas} from '../canvas';
 
@@ -16,7 +15,6 @@ export class ZoomableImageCanvas extends Canvas {
   protected images: ImageBitmap[] = [];
   protected imageDimensions: Rectangle[] = [];
   protected imageIndex = 0;
-  protected offscreenCanvases: OffscreenCanvas[] = [];
   private offset = Vector.ZERO;
   protected zoom = 1;
   private maxZoom: number;
@@ -85,17 +83,6 @@ export class ZoomableImageCanvas extends Canvas {
     return this.images.length > this.imageIndex ? this.images[this.imageIndex] : null;
   }
 
-  protected initOffscreenCanvases(): void {
-    this.offscreenCanvases = this.images.map((bitmap: ImageBitmap) => {
-      const [canvas] = imageBitmapToOffscreenCanvas(bitmap);
-      return canvas;
-    });
-  }
-
-  protected getOffscreenCanvas(): OffscreenCanvas | null {
-    return this.images.length > this.imageIndex ? this.offscreenCanvases[this.imageIndex] : null;
-  }
-
   protected getImageDimension(): Rectangle {
     return this.imageDimensions.length > this.imageIndex
       ? this.imageDimensions[this.imageIndex]
@@ -113,7 +100,11 @@ export class ZoomableImageCanvas extends Canvas {
       ctx.scale(this.zoom, this.zoom);
       ctx.translate(this.offset.x, this.offset.y);
       const imageDimension: Rectangle = this.getImageDimension();
-      ctx.drawImage(image, -imageDimension.center.x, -imageDimension.center.y);
+      try {
+        ctx.drawImage(image, -imageDimension.center.x, -imageDimension.center.y);
+      } catch (e) {
+        console.error(e);
+      }
       this.onImageDrawn();
       ctx.restore();
     }

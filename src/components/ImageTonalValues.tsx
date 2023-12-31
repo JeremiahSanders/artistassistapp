@@ -26,7 +26,7 @@ import {Remote, wrap} from 'comlink';
 import {useEffect, useRef, useState} from 'react';
 import {useReactToPrint} from 'react-to-print';
 import {useZoomableImageCanvas, zoomableImageCanvasSupplier} from '../hooks/';
-import {blobToImageBitmapsConverter, useCreateImageBitmap} from '../hooks/useCreateImageBitmap';
+import {useCreateImageBitmap} from '../hooks/useCreateImageBitmap';
 import {ZoomableImageCanvas} from '../services/canvas/image';
 import {TonalValues} from '../services/image';
 import {imageBitmapToOffscreenCanvas} from '../utils';
@@ -51,17 +51,19 @@ const tonalValuesBlobToImageBitmapsConverter = async (blob: Blob): Promise<Image
 
 type Props = {
   blob?: Blob;
+  images: ImageBitmap[];
+  isImagesLoading: boolean;
 };
 
-export const ImageTonalValues: React.FC<Props> = ({blob}: Props) => {
+export const ImageTonalValues: React.FC<Props> = ({
+  blob,
+  images: original,
+  isImagesLoading: isOriginalLoading,
+}: Props) => {
   const screens = Grid.useBreakpoint();
 
   const {images: tonalValues, isLoading: isTonalValuesLoading} = useCreateImageBitmap(
     tonalValuesBlobToImageBitmapsConverter,
-    blob
-  );
-  const {images: original, isLoading: isOriginalLoading} = useCreateImageBitmap(
-    blobToImageBitmapsConverter,
     blob
   );
 
@@ -121,21 +123,19 @@ export const ImageTonalValues: React.FC<Props> = ({blob}: Props) => {
   const items: MenuProps['items'] = [
     {
       key: '1',
-      label: 'Print',
-      icon: <PrinterOutlined />,
-      onClick: handlePrint,
-    },
-    {
-      key: '2',
       label: isOriginalVisible ? 'Hide original image' : 'Show original image',
       icon: isOriginalVisible ? <MergeCellsOutlined /> : <SplitCellsOutlined />,
       onClick: () => setIsOriginalVisible(prev => !prev),
     },
+    {
+      key: '2',
+      label: 'Print',
+      icon: <PrinterOutlined />,
+      onClick: handlePrint,
+    },
   ];
 
-  const height = isOriginalVisible
-    ? `calc((100vh - 115px) / ${screens['sm'] ? '1' : '2'})`
-    : 'calc(100vh - 115px)';
+  const height = `calc((100vh - 115px) / ${!isOriginalVisible || screens['sm'] ? '1' : '2'})`;
 
   return (
     <Spin spinning={isLoading} tip="Loading" size="large" delay={300}>

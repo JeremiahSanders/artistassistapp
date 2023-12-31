@@ -4,23 +4,12 @@
  */
 
 import {ShareAltOutlined} from '@ant-design/icons';
-import {
-  App,
-  Button,
-  Cascader,
-  CheckboxOptionType,
-  Form,
-  Radio,
-  Select,
-  SelectProps,
-  Space,
-  Spin,
-  Typography,
-} from 'antd';
+import {App, Button, Cascader, Form, Select, SelectProps, Space, Spin, Typography} from 'antd';
 import {DefaultOptionType as SelectOptionType} from 'antd/es/select';
 import {Dispatch, ReactElement, SetStateAction, useEffect, useState} from 'react';
-import {usePaints, useStoreBoughtPaintSets} from '../hooks/';
+import {usePaints, useStoreBoughtPaintSets} from '../hooks';
 import {
+  NUMBER_OF_PAINTS_IN_MIX,
   PAINT_BRANDS,
   PAINT_BRAND_LABELS,
   PAINT_TYPE_LABELS,
@@ -30,15 +19,19 @@ import {
   PaintSetDefinition,
   PaintType,
   StoreBoughtPaintSet,
+  formatPaintId,
   paintSetToUrl,
   toPaintSet,
 } from '../services/color';
 import {getLastPaintSet, getPaintSetByType, savePaintSet} from '../services/db';
-import {ShareModal} from './ShareModal';
+import {maxInMap} from '../utils';
 import {ColorSquare} from './color/ColorSquare';
-import {CascaderOption, TabKey} from './types';
+import {ShareModal} from './modal/ShareModal';
+import {CascaderOption} from './types';
 
-const PAINT_TYPE_OPTIONS: CheckboxOptionType[] = Object.entries(PAINT_TYPE_LABELS).map(
+const MAX_COLORS = 36;
+
+const PAINT_TYPE_OPTIONS: SelectProps['options'] = Object.entries(PAINT_TYPE_LABELS).map(
   ([key, label]: [string, string]) => ({
     value: Number(key),
     label,
@@ -49,7 +42,7 @@ const customPaintSet = [0];
 
 const customPaintSetOption = {
   value: 0,
-  label: 'Custom paint set',
+  label: 'Custom painting set',
 };
 
 function getPaintBrandOptions(type?: PaintType): SelectProps['options'] {
@@ -91,21 +84,25 @@ function getPaintOptions(
     return {};
   }
   return Object.fromEntries(
-    [...paints.entries()].map(([brand, paints]: [PaintBrand, Map<number, Paint>]) => [
-      brand,
-      [...paints.values()].map(({id, name, rgb}: Paint) => {
-        const label: string = id < 1000 ? `${String(id).padStart(3, '0')} ${name}` : name;
-        return {
-          value: id,
-          label: (
-            <Space size="small" align="center" key={label}>
-              <ColorSquare color={rgb} />
-              <span>{label}</span>
-            </Space>
-          ),
-        };
-      }),
-    ])
+    [...paints.entries()].map(([brand, paints]: [PaintBrand, Map<number, Paint>]) => {
+      const maxId: number = maxInMap(paints, ({id}: Paint) => id);
+      return [
+        brand,
+        [...paints.values()].map((paint: Paint) => {
+          const {id, rgb} = paint;
+          const label: string = formatPaintId(paint, maxId);
+          return {
+            value: id,
+            label: (
+              <Space size="small" align="center" key={label}>
+                <ColorSquare color={rgb} />
+                <span>{label}</span>
+              </Space>
+            ),
+          };
+        }),
+      ];
+    })
   );
 }
 
@@ -132,17 +129,10 @@ const formInitialValues: PaintSetDefinition = {
 
 type Props = {
   setPaintSet: Dispatch<SetStateAction<PaintSet | undefined>>;
-  setActiveTabKey: Dispatch<SetStateAction<TabKey>>;
-  blob?: Blob;
   importedPaintSet?: PaintSetDefinition;
 };
 
-export const PaintSetChooser: React.FC<Props> = ({
-  setPaintSet,
-  setActiveTabKey,
-  blob,
-  importedPaintSet,
-}: Props) => {
+export const SelectPaintingSet: React.FC<Props> = ({setPaintSet, importedPaintSet}: Props) => {
   const {message} = App.useApp();
   const [form] = Form.useForm<PaintSetDefinition>();
   const paintType = Form.useWatch<PaintType | undefined>('type', form);
@@ -230,7 +220,6 @@ export const PaintSetChooser: React.FC<Props> = ({
     savePaintSet(values);
     const paintSet: PaintSet = toPaintSet(values, paints);
     setPaintSet(paintSet);
-    setActiveTabKey(!blob ? TabKey.Photo : TabKey.Colors);
   };
 
   const handleSubmitFailed = () => {
@@ -246,7 +235,7 @@ export const PaintSetChooser: React.FC<Props> = ({
     <>
       <div style={{padding: '0 16px'}}>
         <Typography.Title level={3} style={{marginTop: '0.5em'}}>
-          Select paints
+          Select painting set
         </Typography.Title>
         <Spin spinning={isLoading} tip="Loading" size="large" delay={300}>
           <Form
@@ -263,22 +252,22 @@ export const PaintSetChooser: React.FC<Props> = ({
           >
             <Form.Item
               name="type"
-              label="Paint type"
+              label="Medium"
               rules={[{required: true, message: '${label} is required'}]}
             >
-              <Radio.Group options={PAINT_TYPE_OPTIONS} optionType="button" buttonStyle="solid" />
+              <Select options={PAINT_TYPE_OPTIONS} placeholder="Select medium" />
             </Form.Item>
             {!!paintType && (
               <Form.Item
                 name="brands"
-                label="Paint brands"
+                label="Brands"
                 rules={[{required: true, message: '${label} are required'}]}
                 dependencies={['paintType']}
               >
                 <Select
                   mode="multiple"
                   options={paintBrandOptions}
-                  placeholder="Select paint brands"
+                  placeholder="Select brands"
                   showSearch
                   filterOption={filterSelectOptions}
                   allowClear
@@ -288,14 +277,14 @@ export const PaintSetChooser: React.FC<Props> = ({
             {!!paintBrands?.length && (
               <Form.Item
                 name="storeBoughtPaintSet"
-                label="Paint set"
+                label="Set"
                 rules={[{required: true, message: '${label} is required'}]}
                 dependencies={['paintType', 'paintBrands']}
-                tooltip="Do you have a store-bought or custom paint set?"
+                tooltip="Do you have a store-bought or custom set?"
               >
                 <Cascader
                   options={storeBoughtPaintSetOptions}
-                  placeholder="Select paint set"
+                  placeholder="Select set"
                   showSearch={{filter: filterCascaderOptions}}
                   expandTrigger="hover"
                   allowClear
@@ -308,15 +297,35 @@ export const PaintSetChooser: React.FC<Props> = ({
                   key={paintBrand}
                   name={['colors', paintBrand.toString()]}
                   label={`${PAINT_BRAND_LABELS[paintType][paintBrand]?.fullText} colors`}
-                  rules={[{required: true, message: '${label} are required'}]}
+                  rules={[
+                    {required: true, message: '${label} are required'},
+                    ({getFieldValue}) => ({
+                      validator() {
+                        const paintType = getFieldValue('type') as PaintType;
+                        if (NUMBER_OF_PAINTS_IN_MIX[paintType] === 1) {
+                          return Promise.resolve();
+                        }
+                        const colors = getFieldValue('colors') as Record<PaintBrand, number[]>;
+                        const totalColors = Object.values(colors)
+                          .map((ids: number[]) => ids.length)
+                          .reduce((a: number, b: number) => a + b, 0);
+                        if (totalColors > MAX_COLORS) {
+                          return Promise.reject(
+                            `A total of ${MAX_COLORS} colors of all brands are allowed`
+                          );
+                        } else {
+                          return Promise.resolve();
+                        }
+                      },
+                    }),
+                  ]}
                   dependencies={['paintType', 'paintBrands', 'storeBoughtPaintSet']}
-                  tooltip="Add or remove colors to match your actual paint set"
+                  tooltip="Add or remove colors to match your actual painting set"
                 >
                   <Select
                     mode="multiple"
                     options={paintOptions[paintBrand] ?? []}
                     placeholder="Select colors"
-                    maxTagCount={36}
                     showSearch
                     filterOption={filterSelectOptions}
                     allowClear
@@ -330,7 +339,7 @@ export const PaintSetChooser: React.FC<Props> = ({
                 </Button>
                 <Button
                   icon={<ShareAltOutlined />}
-                  title="Share this paint set"
+                  title="Share this painting set"
                   onClick={showShareModal}
                 >
                   Share
@@ -341,7 +350,7 @@ export const PaintSetChooser: React.FC<Props> = ({
         </Spin>
       </div>
       <ShareModal
-        title="Share your paint set"
+        title="Share your painting set"
         open={isShareModalOpen}
         setOpen={setIsShareModalOpen}
         url={sharePaintSetUrl}

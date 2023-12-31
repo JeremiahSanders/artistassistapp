@@ -10,24 +10,26 @@ import {
 } from '@ant-design/icons';
 import type {TabsProps} from 'antd';
 import {Alert, App, Button, Col, FloatButton, Row, Tabs, Tooltip, theme} from 'antd';
-import {useCallback, useState} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 import StickyBox from 'react-sticky-box';
 import {useEventListener} from 'usehooks-ts';
+import {useCreateImageBitmap} from '../hooks/useCreateImageBitmap';
 import {useFullScreen} from '../hooks/useFullscreen';
 import {OFF_WHITE_HEX, PaintMix, PaintSet, UrlParsingResult, parseUrl} from '../services/color';
 import {Rgb, RgbTuple} from '../services/color/model';
-import {AboutModal} from './AboutModal';
+import {createScaledImageBitmap} from '../utils';
 import {ImageColorPicker} from './ImageColorPicker';
+import {ImageGrid} from './ImageGrid';
 import {ImageSketch} from './ImageSketch';
 import {ImageTonalValues} from './ImageTonalValues';
-import {PaintSetChooser} from './PaintSetChooser';
 import {Palette} from './Palette';
-import {ReflectanceChartDrawer} from './ReflectanceChartDrawer';
 import {SelectImage} from './SelectImage';
+import {SelectPaintingSet} from './SelectPaintingSet';
+import {AboutModal} from './modal/AboutModal';
 import {TabKey} from './types';
 
 const isBrowserSupported =
-  typeof Worker &&
+  typeof Worker !== 'undefined' &&
   typeof OffscreenCanvas !== 'undefined' &&
   typeof createImageBitmap !== 'undefined' &&
   typeof indexedDB !== 'undefined';
@@ -38,6 +40,12 @@ const {paintSet: importedPaintSet, paintMix: importedPaintMix}: UrlParsingResult
 if (importedPaintSet || importedPaintMix) {
   history.pushState({}, '', '/');
 }
+
+const MAX_IMAGE_SIZE_2K = 2560 * 1440;
+
+const blobToImageBitmapsConverter = async (blob: Blob): Promise<ImageBitmap[]> => {
+  return [await createScaledImageBitmap(blob, MAX_IMAGE_SIZE_2K)];
+};
 
 export const ArtistAssistApp: React.FC = () => {
   const {
@@ -55,10 +63,24 @@ export const ArtistAssistApp: React.FC = () => {
   const [blob, setBlob] = useState<Blob | undefined>();
   const [backgroundColor, setBackgroundColor] = useState<string>(OFF_WHITE_HEX);
   const [isGlaze, setIsGlaze] = useState<boolean>(false);
-  const [reflectanceChartPaintMix, setReflectanceChartPaintMix] = useState<PaintMix | undefined>();
-  const [isOpenReflectanceChart, setIsOpenReflectanceChart] = useState<boolean>(false);
   const [paintMixes, setPaintMixes] = useState<PaintMix[] | undefined>();
   const [isAboutModalOpen, setIsAboutModalOpen] = useState<boolean>(false);
+
+  const {images, isLoading: isImagesLoading} = useCreateImageBitmap(
+    blobToImageBitmapsConverter,
+    blob
+  );
+
+  useEffect(() => {
+    if (!paintSet) {
+      setActiveTabKey(TabKey.Paints);
+    } else if (!blob) {
+      setActiveTabKey(TabKey.Photo);
+    } else {
+      setActiveTabKey(TabKey.Colors);
+      message.info('🔎 Pinch to zoom (or use the mouse wheel) and drag to pan');
+    }
+  }, [paintSet, blob, message]);
 
   useEventListener('beforeunload', event => {
     event.returnValue = 'Are you sure you want to leave?';
@@ -73,15 +95,6 @@ export const ArtistAssistApp: React.FC = () => {
     [setBackgroundColor, setIsGlaze]
   );
 
-  const showReflectanceChart = useCallback((paintMix: PaintMix) => {
-    setReflectanceChartPaintMix(paintMix);
-    setIsOpenReflectanceChart(true);
-  }, []);
-
-  const showZoomAndPanMessage = useCallback(() => {
-    message.info('🔎 Pinch to zoom (or use the mouse wheel) and drag to pan');
-  }, [message]);
-
   const showAboutModal = () => {
     setIsAboutModalOpen(true);
   };
@@ -94,15 +107,14 @@ export const ArtistAssistApp: React.FC = () => {
     {
       key: TabKey.Paints,
       label: 'Paints',
-      children: <PaintSetChooser {...{setPaintSet, setActiveTabKey, blob, importedPaintSet}} />,
+      children: <SelectPaintingSet {...{setPaintSet, blob, importedPaintSet}} />,
       forceRender: true,
     },
     {
       key: TabKey.Photo,
       label: 'Photo',
-      children: <SelectImage {...{setBlob, setActiveTabKey, showZoomAndPanMessage}} />,
+      children: <SelectImage {...{setBlob}} />,
       forceRender: true,
-      disabled: !paintSet,
     },
     {
       key: TabKey.Colors,
@@ -111,7 +123,8 @@ export const ArtistAssistApp: React.FC = () => {
         <ImageColorPicker
           {...{
             paintSet,
-            blob,
+            images,
+            isImagesLoading,
             backgroundColor,
             setBackgroundColor,
             isGlaze,
@@ -119,7 +132,6 @@ export const ArtistAssistApp: React.FC = () => {
             paintMixes,
             setPaintMixes,
             setAsBackground,
-            showReflectanceChart,
           }}
         />
       ),
@@ -136,7 +148,6 @@ export const ArtistAssistApp: React.FC = () => {
             paintMixes,
             setPaintMixes,
             setAsBackground,
-            showReflectanceChart,
             importedPaintMix,
           }}
         />
@@ -148,14 +159,21 @@ export const ArtistAssistApp: React.FC = () => {
       label: 'Sketch',
       children: <ImageSketch blob={blob} />,
       forceRender: true,
-      disabled: !paintSet || !blob,
+      disabled: !blob,
     },
     {
       key: TabKey.TonalValues,
       label: 'Tonal Values',
-      children: <ImageTonalValues blob={blob} />,
+      children: <ImageTonalValues {...{blob, images, isImagesLoading}} />,
       forceRender: true,
-      disabled: !paintSet || !blob,
+      disabled: !blob || !images.length,
+    },
+    {
+      key: TabKey.Grid,
+      label: 'Grid',
+      children: <ImageGrid {...{images, isImagesLoading}} />,
+      forceRender: true,
+      disabled: !images.length,
     },
   ];
 
@@ -169,7 +187,7 @@ export const ArtistAssistApp: React.FC = () => {
     return (
       <Alert
         message="Error"
-        description="Your browser is not supported. Use the latest version of the browser to access the web app."
+        description={`Your web browser is not supported: ${navigator.userAgent}. Use the latest version of Google Chrome, Firefox, Opera, Samsung Internet or Microsoft Edge to access the web app.`}
         type="error"
         showIcon
         style={{margin: '16px'}}
@@ -198,11 +216,6 @@ export const ArtistAssistApp: React.FC = () => {
           />
         </Col>
       </Row>
-      <ReflectanceChartDrawer
-        paintMix={reflectanceChartPaintMix}
-        open={isOpenReflectanceChart}
-        onClose={() => setIsOpenReflectanceChart(false)}
-      />
       <FloatButton
         icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
         shape="square"

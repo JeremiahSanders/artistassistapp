@@ -3,26 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {App, Col, Divider, Form, Input, Row, Typography} from 'antd';
+import {App, Col, Divider, Form, Input, Row, Typography, theme} from 'antd';
 import {ChangeEvent, Dispatch, SetStateAction, useCallback, useEffect, useState} from 'react';
 import {ImageFile} from '../services/db';
 import {deleteImageFile, getImageFiles, saveImageFile} from '../services/db/image-file-db';
 import {SAMPLE_IMAGES, SampleImageUrl} from '../services/image/sample-images';
 import {RecentImage} from './image/RecentImage';
 import {SampleImage} from './image/SampleImage';
-import {TabKey} from './types';
 
 type Props = {
   setBlob: Dispatch<SetStateAction<Blob | undefined>>;
-  setActiveTabKey: Dispatch<SetStateAction<TabKey>>;
-  showZoomAndPanMessage: () => void;
 };
 
-export const SelectImage: React.FC<Props> = ({
-  setBlob,
-  setActiveTabKey,
-  showZoomAndPanMessage,
-}: Props) => {
+export const SelectImage: React.FC<Props> = ({setBlob}: Props) => {
+  const {
+    token: {fontSizeLG},
+  } = theme.useToken();
+
   const {message} = App.useApp();
 
   const [recentFiles, setRecentFiles] = useState<ImageFile[]>([]);
@@ -54,8 +51,6 @@ export const SelectImage: React.FC<Props> = ({
       return;
     }
     setBlob(file);
-    setActiveTabKey(TabKey.Colors);
-    showZoomAndPanMessage();
     await saveImageFile(file);
     setRecentFiles(await getImageFiles());
   };
@@ -66,7 +61,8 @@ export const SelectImage: React.FC<Props> = ({
         Select photo
       </Typography.Title>
       <Form.Item
-        label="Select a new photo"
+        label={<span style={{fontSize: fontSizeLG}}>Select a photo from your device</span>}
+        colon={false}
         labelCol={{xs: 24}}
         labelAlign="left"
         style={{marginBottom: 0}}
@@ -84,8 +80,6 @@ export const SelectImage: React.FC<Props> = ({
                     imageFile,
                     deleteRecentImage,
                     setBlob,
-                    setActiveTabKey,
-                    showZoomAndPanMessage,
                   }}
                 />
               </Col>
@@ -103,8 +97,6 @@ export const SelectImage: React.FC<Props> = ({
                 thumbnail,
                 name,
                 setBlob,
-                setActiveTabKey,
-                showZoomAndPanMessage,
               }}
             />
           </Col>
